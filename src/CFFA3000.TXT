@@ -1,0 +1,976 @@
+; CFFA3000
+
+          .TITLE "Apple /// Compact Flash For Apple 3000 (CFFA3000) Driver"
+          .PROC  CFFA3000
+
+DriverVersion   .EQU 1000            ; Version number
+DriverMfgr      .EQU 4453            ; Driver Manufacturer - DS
+
+;
+; SOS Equates
+;
+ExtPG     .EQU 1401                  ; Driver extended bank address offset
+AllocSIR  .EQU 1913                  ; Allocate system internal resource
+SELC800   .EQU 1922                  ; Enable Expansion Rom Space
+SysErr    .EQU 1928                  ; Report error to system
+EReg      .EQU 0FFDF                 ; Environment register
+ReqCode   .EQU 0C0                   ; Request code
+SOS_Unit  .EQU 0C1                   ; Unit number
+SosBuf    .EQU 0C2                   ; SOS buffer pointer (2 bytes)
+ReqCnt    .EQU 0C4                   ; Requested byte count
+CtlStat   .EQU 0C2                   ; Control/status code
+CSList    .EQU 0C3                   ; Control/status list pointer
+SosBlk    .EQU 0C6                   ; Starting block number
+QtyRead   .EQU 0C8                   ; Pointer to bytes read return by D_READ
+;
+; Our temps in zero page
+;
+Count     .EQU 0CD                   ; 2 bytes
+C800Ptr   .EQU 0CF                   ; 2 bytes
+;
+; Parameter block specific to current SOS request
+;
+CFFAUnit  .EQU 0D1
+Num_Blks  .EQU 0D4                   ; 2 bytes lb,hb
+DataBuf   .EQU 0D6                   ; 2 bytes
+;
+; SOS Error Codes
+;
+XDNFERR   .EQU 010                   ; Device not found
+XBADDNUM  .EQU 011                   ; Invalid device number
+XREQCODE  .EQU 020                   ; Invalid request code
+XCTLCODE  .EQU 021                   ; Invalid control/status code
+XCTLPARAM .EQU 022                   ; Invalid control/status parameter
+XNORESRC  .EQU 025                   ; Resources not available
+XBADOP    .EQU 026                   ; Invalid operation
+XIOERROR  .EQU 027                   ; I/O error
+XNODRIVE  .EQU 028                   ; Drive not connected
+XBYTECNT  .EQU 02C                   ; Byte count not a multiple of 512
+XBLKNUM   .EQU 02D                   ; Block number to large
+XDISKSW   .EQU 02E                   ; Disk switched
+XNORESET  .EQU 033                   ; Device reset failed
+;
+; CFFA3000 Constants
+;
+kCmd3K_SetEnvironment .EQU 001       ; Set X = 0xa3 for Apple ///
+kCmd3K_Status         .EQU 010
+kCmd3K_Read           .EQU 011
+kCmd3K_Write          .EQU 012
+CFFA3K_API            .EQU 0CFED     ; CFFA3000 API entry point
+shUnitNumber          .EQU 0CFDF
+shStatusByte          .EQU 0CFE0
+shBlockNumber         .EQU 0CFE1
+;
+; Switch Macro
+;
+          .MACRO    switch
+          .IF       "%1" <> ""       ; If parameter 1 is present
+          LDA       %1               ; Load A with switch index
+          .ENDC
+          CMP       #%2+1            ; Do bounds check
+          BCS       $010
+          ASL       A
+          TAY
+          LDA       %3+1,Y           ; Get switch index from table
+          PHA
+          LDA       %3,Y
+          PHA
+          .IF       "%4" <> "*"      ; If parameter 4 omitted,
+          RTS                        ;   then go to code
+          .ENDC
+$010      .ENDM
+;
+; Comment Field of driver
+;
+          .WORD  0FFFF ; Signal that we have a comment
+          .WORD  78. ; Length of comment field... entered manually.
+                     ; The Pascal Assembler can't count forward references.
+                     ; SCP only shows 78 characters' worth of information.
+          .ASCII "Apple /// CFFA3000 (Compact Flash For Ap"
+          .ASCII "ple 3000) Driver by David Schmidt 2011"
+;                          1         2         3         4
+;                 1234567890123456789012345678901234567890
+
+;------------------------------------
+;
+; Device identification Block (DIB) - Volume #0
+;
+;------------------------------------
+
+DIB_0     .WORD     DIB_1            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D1    "; Device name
+          .BYTE     080              ; Active, no page alignment
+DIB0_Slot .BYTE     001              ; Slot number
+          .BYTE     000              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB0_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #1
+; Page alignment begins here
+;
+DIB_1     .WORD     DIB_2            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D2    "; Device name
+          .BYTE     080              ; Active
+DIB1_Slot .BYTE     001              ; Slot number
+          .BYTE     001              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB1_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #2
+;
+DIB_2     .WORD     DIB_3            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D3    "; Device name
+          .BYTE     080              ; Active
+DIB2_Slot .BYTE     001              ; Slot number
+          .BYTE     002              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB2_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #3
+;
+DIB_3     .WORD     DIB_4            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D4    "; Device name
+          .BYTE     080              ; Active
+DIB3_Slot .BYTE     001              ; Slot number
+          .BYTE     003              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB3_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #4
+;
+DIB_4     .WORD     DIB_5            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D5    "; Device name
+          .BYTE     080              ; Active
+DIB4_Slot .BYTE     001              ; Slot number
+          .BYTE     004              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB4_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #5
+;
+DIB_5     .WORD     DIB_6            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D6    "; Device name
+          .BYTE     080              ; Active
+DIB5_Slot .BYTE     001              ; Slot number
+          .BYTE     005              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB5_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #6
+;
+DIB_6     .WORD     DIB_7            ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D7    "; Device name
+          .BYTE     080              ; Active
+DIB6_Slot .BYTE     001              ; Slot number
+          .BYTE     006              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB6_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+;
+; Device identification Block (DIB) - Volume #7
+;
+DIB_7     .WORD     0000             ; Link pointer
+          .WORD     Entry            ; Entry pointer
+          .BYTE     00B              ; Name length byte
+          .ASCII    ".CFFA3000D8    "; Device name
+          .BYTE     080              ; Active
+DIB7_Slot .BYTE     001              ; Slot number
+          .BYTE     007              ; Unit number
+          .BYTE     0F1              ; Type
+          .BYTE     010              ; Subtype
+          .BYTE     000              ; Filler
+DIB7_Blks .WORD     0000             ; # Blocks in device
+          .WORD     DriverMfgr       ; Driver manufacturer
+          .WORD     DriverVersion    ; Driver version
+          .WORD     0000             ; DCB length followed by DCB
+
+;------------------------------------
+;
+; Local storage locations
+;
+;------------------------------------
+
+LastOP    .BLOCK    008, 0FF         ; Last operation for D_REPEAT calls
+SIR_Addr  .WORD     SIR_Tbl
+SIR_Tbl   .BLOCK    005, 000
+SIR_Len   .EQU      *-SIR_Tbl
+RdBlk_Proc .WORD    0000
+WrBlk_Proc .WORD    0000
+MaxUnits  .BYTE     000                  ; The maximum number of units
+DCB_Idx   .BYTE     000                  ; DCB 0's blocks
+          .BYTE     DIB1_Blks-DIB0_Blks  ; DCB 1's blocks
+          .BYTE     DIB2_Blks-DIB0_Blks  ; DCB 2's blocks
+          .BYTE     DIB3_Blks-DIB0_Blks  ; DCB 3's blocks
+          .BYTE     DIB4_Blks-DIB0_Blks  ; DCB 4's blocks
+          .BYTE     DIB5_Blks-DIB0_Blks  ; DCB 5's blocks
+          .BYTE     DIB6_Blks-DIB0_Blks  ; DCB 6's blocks
+          .BYTE     DIB7_Blks-DIB0_Blks  ; DCB 7's blocks
+SigCF3K   .ASCII    "CF3K"               ; CFFA3000 signature in memory
+CardIsOK  .BYTE     000                  ; Have we found the CFFA3000 yet?
+LastError .BYTE     000                  ; Recent error RC from CFFA3000
+
+;------------------------------------
+;
+; Driver request handlers
+;
+;------------------------------------
+
+Entry     LDA DIB0_Slot
+          JSR SELC800                ; Turn on C800 ROM space from our slot
+          LDA SOS_Unit
+          STA CFFAUnit
+          INC CFFAUnit               ; CFFA3000 unit is 1-based vs. SOS 0-based
+          JSR Dispatch               ; Call the dispatcher
+          LDX SOS_Unit               ; Get drive number for this unit
+          LDA ReqCode                ; Keep request around for D_REPEAT
+          STA LastOP,X               ; Keep track of last operation
+          LDA #000
+          JSR SELC800                ; Unselect C800 ROM space
+          RTS
+;
+; The Dispatcher.  Note that if we came in on a D_INIT call,
+; we do a branch to Dispatch normally.  
+; Dispatch is called as a subroutine!
+;
+DoTable   .WORD     DRead-1          ; 0 Read request
+          .WORD     DWrite-1         ; 1 Write request
+          .WORD     DStatus-1        ; 2 Status request
+          .WORD     DControl-1       ; 3 Control request
+          .WORD     BadReq-1         ; 4 Unused
+          .WORD     BadReq-1         ; 5 Unused
+          .WORD     BadOp-1          ; 6 Open - valid for character devices
+          .WORD     BadOp-1          ; 7 Close - valid for character devices
+          .WORD     DInit-1          ; 8 Init request
+          .WORD     DRepeat-1        ; 9 Repeat last read or write request
+Dispatch  SWITCH    ReqCode,9,DoTable ; Serve the request
+;
+; Dispatch errors
+;
+BadReq    LDA #XREQCODE              ; Bad request code!
+          JSR SysErr                 ; Return to SOS with erorr in A
+BadOp     LDA #XBADOP                ; Invalid operation!
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+;
+; D_REPEAT - repeat the last D_READ or D_WRITE call
+;
+DRepeat   LDX SOS_Unit
+          LDA LastOP,X               ; Recall the last thing we did
+          CMP #002                   ; Looking for operation < 2
+          BCS BadOp                  ; Can only repeat a read or write
+          STA ReqCode
+          JMP Dispatch
+
+NoDevice  LDA #XDNFERR               ; Device not found
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+;
+; D_INIT call processing - called once each for all volumes.
+;
+DInit     LDA SOS_Unit               ; Check if we're initting the zeroeth unit
+          BNE UnitInit               ; No - then skip the signature check
+
+CheckSig  LDA #0C0                   ; Form a $CsF6 address, where s = slot #
+          ORA DIB0_Slot              ; Add in slot number
+          STA Count+1
+          LDA #0F6
+          STA Count
+          LDY #003
+$1        LDA (Count),Y
+          CMP SigCF3K,Y              ; Check for 'CF3K' signature in our slot
+          BNE NoDevice               ; No device if all four bytes don't match
+          DEY
+          BPL $1
+
+          LDA DIB0_Slot              ; Found a CFFA3000!
+          ORA #010                   ; SIR = 16+slot#
+          STA SIR_Tbl
+          STA CardIsOK               ; Remember that we found the card
+          LDA #SIR_Len
+          LDX SIR_Addr
+          LDY SIR_Addr+1
+          JSR AllocSIR               ; This one's mine!
+          BCS NoDevice
+
+          LDX #0A3
+          LDA #kCmd3K_SetEnvironment
+          JSR CFFA3K_API             ; Get CFFA3000 set up for us
+          BCS NoDevice
+          LDA #000
+          STA shUnitNumber
+          LDA #kCmd3K_Status
+          JSR CFFA3K_API             ; How many units can we expect at maximum?
+          BCS NoDevice
+          LDA shUnitNumber
+          STA MaxUnits
+
+UnitInit
+          LDA CardIsOK               ; Did we previously find a card?
+          BEQ NoDevice               ; If not... then bail
+          LDA CFFAUnit               ; Which unit did we get called with?
+          STA shUnitNumber
+          LDA #kCmd3K_Status         ; Ask for the status of this unit
+          JSR CFFA3K_API
+          LDA #000
+          STA shBlockNumber
+          STA shBlockNumber+1
+          STA shBlockNumber+2
+          STA shBlockNumber+3
+          LDA #kCmd3K_Read           ; Do a dummy read of block zero
+          JSR CFFA3K_API             ;   to clear out a device switched error
+          LDA #kCmd3K_Status
+          JSR CFFA3K_API
+          BCS NoDevice
+
+SaveCapacity
+          LDX SOS_Unit               ; Get the stats on this unit
+          LDY DCB_Idx,X
+          LDA shBlockNumber
+          STA DIB0_Blks,Y
+          LDA shBlockNumber+1
+          STA DIB0_Blks+1,Y
+          LDA shBlockNumber+2
+          CMP #001                   ; Do we have 65536 (or more) blocks?
+          BNE UIDone
+          LDA #0FF                   ; Then we really only have 65535 blocks.
+          STA DIB0_Blks,Y
+          STA DIB0_Blks+1,Y
+
+UIDone    CLC
+          RTS
+
+;
+; D_READ call processing
+;
+DRead
+          LDA CardIsOK               ; Did we previously find a card?
+          BNE DReadGo
+          JMP NoDevice               ; If not... then bail
+DReadGo          
+          JSR CkCnt                  ; Checks for validity, aborts if not
+          JSR CkUnit                 ; Checks for unit below unit max
+          LDA #000                   ; Zero # bytes read
+          STA Count                  ; Local count of bytes read
+          STA Count+1
+          TAY
+          STA (QtyRead),Y            ; Userland count of bytes read
+          INY
+          STA (QtyRead),Y            ; Msb of userland bytes read
+          LDA Num_Blks               ; Check for Num_Blks greater than zero
+          ORA Num_Blks+1
+          BEQ ReadExit
+          JSR FixUp                  ; Correct for addressing anomalies
+          JSR Read_Block             ; Transfer a block to/from the disk
+          LDY #000
+          LDA Count                  ; Local count of bytes read
+          STA (QtyRead),y            ; Update # of bytes actually read
+          INY
+          LDA Count+1
+          STA (QtyRead),y
+          BCS IO_Error               ; An error occurred
+ReadExit  RTS                        ; Exit read routines
+IO_Error  LDA #XIOERROR              ; I/O error
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+;
+; D_WRITE call processing
+;
+DWrite
+          LDA CardIsOK               ; Did we previously find a card?
+          BNE DWriteGo
+          JMP NoDevice               ; If not... then bail
+          
+DWriteGo
+          JSR CkCnt                  ; Checks for validity
+          JSR CkUnit                 ; Checks for unit below unit max
+CWrite    LDA Num_Blks               ; Check for Num_Blks greater than zero
+          ORA Num_Blks+1
+          BEQ WriteExit              ; Quantity to write is zero - so done
+          JSR FixUp
+          JSR Write_Block
+          BCS IO_Error
+WriteExit RTS
+
+;
+; D_STATUS call processing
+;  $00 = Driver Status
+;  $FE = Return preferrred bitmap location ($FFFF)
+;
+DStatus
+          LDA CardIsOK               ; Did we previously find a card?
+          BNE DStatusGo
+          JMP NoDevice               ; If not... then bail
+
+DStatusGo
+          LDA CFFAUnit               ; Get the unit number we're talking about
+          STA shUnitNumber
+          LDA CtlStat                ; Which status code to run?
+          BNE DS0
+          LDA #kCmd3K_Status         ; Status code 0 - return the status byte
+          JSR CFFA3K_API
+          BCS DS1
+          LDY #000
+          LDA shStatusByte
+          STA (CSList),Y
+          JSR SaveCapacity
+          CLC
+          RTS
+DS1       CMP #02F                   ; Did we get a fancy new $2f error?
+          BNE DS2
+          LDA #XDNFERR               ; Then change it to XDNFERR instead.
+DS2       JSR SysErr                 ; Return to SOS with erorr in A
+DS0       CMP #0FE
+          BNE DSWhat
+
+          LDY #000                   ; Return preferred bit map locations.
+          LDA #0FF                   ; We return FFFF, don't care
+          STA (CSList),Y
+          INY
+          STA (CSList),Y       
+          CLC
+          RTS
+
+DSWhat    LDA #XCTLCODE              ; Control/status code no good
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+
+;
+; D_CONTROL call processing
+;  $00 = Reset device
+;  $FE = Perform media formatting
+;
+DControl
+          LDA CardIsOK               ; Did we previously find a card?
+          BNE DContGo
+          JMP NoDevice               ; If not... then bail
+          
+DContGo   LDA CtlStat                ; Control command
+          BEQ CReset
+          CMP #0FE                   ; Format?
+          BEQ DCFormat
+          JMP DCWhat                 ; Control code no good!
+CReset    JSR UnitInit               ; Reset this unit
+          BCS DCNoReset
+DCDone    RTS          
+DCNoReset LDA #XNORESET              ; Things went bad after reset
+          JSR SysErr                 ; Return to SOS with erorr in A
+DCWhat    LDA #XCTLCODE              ; Control/status code no good
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+DCFormat
+;
+; Write Block0, Block1 to disk
+;
+          LDX SOS_Unit               ; Get the stats on this unit
+          LDY DCB_Idx,X
+          LDA DIB0_Blks,Y
+          STA VolBlks                ; Fill VolBlks with capacity
+          LDA DIB0_Blks+1,Y
+          STA VolBlks+1
+          LDA #000
+          STA VolBlks+2
+          STA shBlockNumber
+          STA shBlockNumber+1
+          STA shBlockNumber+2
+          STA shBlockNumber+3
+
+          JSR ZeroFillC800
+          LDA CFFAUnit               ; Get the unit number we're talking about
+          STA shUnitNumber
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          BCS Error
+          INC shBlockNumber
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          BCS Error
+          JSR FormatFill
+          JSR Catalog                ; Write Directory information to the disk
+          RTS
+Error     SEC
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+;------------------------------------
+;
+; Utility routines
+;
+;------------------------------------
+
+;
+; Read_Block - Read requested blocks from device into memory
+;
+Read_Block
+          LDA SosBuf                 ; Copy out buffer pointers
+          STA DataBuf
+          LDA SosBuf+1
+          STA DataBuf+1
+          LDA SosBuf+ExtPG
+          STA DataBuf+ExtPG
+
+          LDA CFFAUnit
+          STA shUnitNumber           ; Now we have the CFFA3000 unit
+
+          LDA SosBlk
+          STA shBlockNumber
+          LDA SosBlk+1
+          STA shBlockNumber+1
+          LDA #000
+          STA shBlockNumber+2
+          STA shBlockNumber+3
+Read3k    LDA #kCmd3K_Read
+          JSR CFFA3K_API
+          BCC $1                     ; Branch past error
+          STA LastError
+          CMP #XDISKSW
+          BNE $0
+          JSR ZeroUnit
+          JSR UnitInit               ; Re-initialize this unit
+          JMP Dispatch               ; Go around again!
+$0        LDA LastError
+          JSR SysErr                 ; Return to SOS with erorr in A
+$1        LDA #000
+          STA C800Ptr
+          LDA #0C8
+          STA C800Ptr+1              ; Establish a pointer to C800
+          LDY #000
+$2        LDA (C800Ptr),Y
+          STA (DataBuf),Y
+          INY
+          BNE $2
+          JSR IncrAdr
+$3        LDA (C800Ptr),Y
+          STA (DataBuf),Y
+          INY
+          BNE $3
+          JSR IncrAdr
+
+          DEC Num_Blks               ; Did we get what was asked for?
+          BNE RdBlk2
+          DEC Num_Blks+1
+          BPL RdBlk2
+          CLC
+          RTS
+
+RdBlk2    INC shBlockNumber          ; 16-bit increment of block number
+          BNE Read3k
+          INC shBlockNumber+1
+          JMP Read3k
+
+;
+; Write_Block - write memory out to requested blocks
+;
+Write_Block
+          LDA SosBuf                 ; Copy out buffer pointers
+          STA DataBuf
+          LDA SosBuf+1
+          STA DataBuf+1
+          LDA SosBuf+ExtPG
+          STA DataBuf+ExtPG
+
+          LDA SOS_Unit
+          STA shUnitNumber
+          CLC
+          INC shUnitNumber           ; Now we have the CFFA3000 unit
+
+          LDA SosBlk
+          STA shBlockNumber
+          LDA SosBlk+1
+          STA shBlockNumber+1
+          LDA #000
+          STA shBlockNumber+2
+          STA shBlockNumber+3
+
+Write3k   LDA #000
+          TAY
+          STA C800Ptr
+          LDA #0C8
+          STA C800Ptr+1              ; Establish a pointer to C800
+$2        LDA (DataBuf),Y
+          STA (C800Ptr),Y
+          INY
+          BNE $2
+          JSR IncrAdr
+$3        LDA (DataBuf),Y
+          STA (C800Ptr),Y
+          INY
+          BNE $3
+          
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          BCC $1                     ; Branch past error
+          STA LastError
+          CMP #XDISKSW
+          BNE $0
+          JSR ZeroUnit
+          JSR UnitInit               ; Re-initialize this unit
+          JMP Dispatch               ; Go around again!
+$0        LDA LastError
+          JSR SysErr                 ; Return to SOS with erorr in A
+ 
+$1        JSR IncrAdr
+          DEC Num_Blks               ; Did we put what was asked for?
+          BNE WrBlk2                 ; Not done yet... go around again
+          DEC Num_Blks+1             ; (16 bit decrement)
+          BPL WrBlk2                 ; Not done yet... go around again
+          CLC
+          RTS                        ; We're done
+
+WrBlk2    INC shBlockNumber          ; 16-bit increment of block number
+          BNE Write3k
+          INC shBlockNumber+1
+          JMP Write3k
+
+;
+; ZeroUnit - clear out the capacity bytes of this unit
+;
+ZeroUnit  LDX SOS_Unit
+          LDY DCB_Idx,X
+          LDA #000
+          STA DIB0_Blks,Y
+          STA DIB0_Blks+1,Y
+          RTS
+;
+; Check ReqCnt to ensure it's a multiple of 512.
+;
+CkCnt     LDA ReqCnt                 ; Look at the lsb of bytes requested
+          BNE $1                     ; No good!  lsb should be 00
+          STA Num_Blks+1             ; Zero out the high byte of blocks
+          LDA ReqCnt+1               ; Look at the msb
+          LSR A                      ; Put bottom bit into carry, 0 into top
+          STA Num_Blks               ; Convert bytes to number of blks to xfer
+          BCC CvtBlk                 ; Carry is set from LSR to mark error.
+$1        LDA #XBYTECNT
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+;
+; Test for valid block number; abort on error
+;
+CvtBlk    LDX SOS_Unit
+          LDY DCB_Idx,X
+          SEC
+          LDA DIB0_Blks+1,Y          ; Blocks on unit msb
+          SBC SosBlk+1               ; User requested block number msb
+          BVS BlkErr                 ; Not enough blocks on device for request
+          BEQ $1		     ; Equal msb; check lsb.
+          RTS                        ; Greater msb; we're ok.
+$1        LDA DIB0_Blks,Y            ; Blocks on unit lsb
+          SBC SosBlk                 ; User requested block number lsb
+          BVS BlkErr                 ; Not enough blocks on device for request
+          RTS                        ; Equal or greater msb; we're ok.
+BlkErr    LDA #XBLKNUM
+          JSR SysErr                 ; Return to SOS with erorr in A
+
+
+IncrAdr   INC C800Ptr+1              ; Increment buffer MSB from CFFA3000
+          INC Count+1                ; Increment byte count MSB
+BumpAdr   INC DataBuf+1              ; Increment DataBuf MSB in userland
+
+;
+; Fix up the buffer pointer to correct for addressing
+; anomalies.  We just need to do the initial checking
+; for two cases:
+; 00xx bank N -> 80xx bank N-1
+; 20xx bank 8F if N was 0
+; FDxx bank N -> 7Dxx bank N+1
+; If pointer is adjusted, return with carry set
+;
+FixUp     LDA DataBuf+1              ; Look at msb
+          BEQ $1                     ; That's one!
+          CMP #0FD                   ; Is it the other one?
+          BCS $2                     ; Yep. fix it!
+          RTS                        ; Pointer unchanged, return carry clear.
+$1        LDA #080                   ; 00xx -> 80xx
+          STA DataBuf+1
+          DEC DataBuf+ExtPG          ; Bank N -> band N-1
+          LDA DataBuf+ExtPG          ; See if it was bank 0
+          CMP #07F                   ; (80) before the DEC.
+          BNE $3                     ; Nope! all fixed.
+          LDA #020                   ; If it was, change both
+          STA DataBuf+1              ; Msb of address and
+          LDA #08F
+          STA DataBuf+ExtPG          ; Bank number for bank 8F
+          RTS                        ; Eeturn carry set
+$2        AND #07F                   ; Strip off high bit
+          STA DataBuf+1              ; FDxx ->7Dxx
+          INC DataBuf+ExtPG          ; Bank N -> bank N+1
+$3        RTS                        ; Return carry set
+
+CkUnit    LDA SOS_unit               ; Checks for unit below unit max
+          CMP MaxUnits
+          BMI UnitOk
+NoUnit    LDA #011                   ; Report no unit to SOS
+          JSR SysErr
+UnitOk    CLC
+          RTS
+
+;
+; Prepare BitMap and Link blocks for writing to disk
+; Part of formatting support
+;
+FormatFill
+          LDA #005                   ; Block 5 on Disk
+          STA shBlockNumber
+          STA Storage                ; Length of DirTbl
+          JSR ZeroFillC800
+LLink     LDX Storage
+          LDA DirTbl,X               ; Move Directory Link values into Buffer
+          STA 0C802                  ; Store next Directory block #
+          DEX
+          LDA DirTbl,X               ; Fetch another # from DirTbl
+          STA 0C800                  ; Store previous Directory block #
+          DEX
+          STX Storage
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API             ; Write Directory Link values to disk
+LDec      DEC shBlockNumber          ; Decrement MLI block number
+          LDA shBlockNumber          ; See if MLIBlk = 2
+          CMP #002
+          BNE LLink                  ; Process another Link block
+
+;
+; Calculate BitMap Size and cndo
+; Part of formatting support
+;
+BlkCount                             ; Fill full pages first, then remainder
+          LDA #006                   ; First block to deal with: $06
+          STA shBlockNumber
+          CLC
+          LDA VolBlks+1
+          STA FullPages
+          LDA VolBlks+2
+          BEQ $1
+          SEC 
+$1        ROR FullPages              ; VolBlks is now divided by 512
+          LSR FullPages              ; ... by 1024
+          LSR FullPages              ; ... by 2048
+          LSR FullPages              ; ... by 4096
+
+          BEQ LastBlock              ; No full blocks?  Skip to remainder part.
+
+          JSR FFFillC800             ; Set up to fill pages with $FFs
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          LDA #000
+          STA BlkCnt
+          STA 0C800                  ; Mark first blocks as used
+          STA 0C801
+          LDA #003
+          STA 0C802
+
+$2
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API             ; Write Buffer BitMap to block on the disk
+          LDA #0FF                   ; Mark first blocks as unused again
+          STA 0C800
+          STA 0C801
+          STA 0C802
+          INC shBlockNumber
+          INC BlkCnt
+          LDA BlkCnt
+          CMP FullPages
+          BNE $2
+
+LastBlock
+          JSR BlkRemainder
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          RTS
+
+BlkRemainder
+          JSR ZeroFillC800
+          LDA VolBlks+1              ; Where # of blocks are stored
+          LDX VolBlks
+          LDY #000
+          STX Storage+1              ; Divide the # of blocks by 8 for bitmap
+          LSR A                      ;   calculation
+          ROR Storage+1
+          LSR A
+          ROR Storage+1
+          LSR A
+          ROR Storage+1
+          STA Storage+2
+BitMapCode
+          LDA FullPages              ; Only tick off 7 blks if
+          BNE BitMapNotFirst         ;     this is the only page in the BAM
+          LDA #001                   ; Clear first 7 blocks (i.e. %00000001)
+          STA (C800Ptr),Y
+          JMP BitMapGo
+BitMapNotFirst
+          LDA #0FF
+          STA (C800Ptr),Y
+BitMapGo
+          LDY Storage+1              ; Original low block count value
+          BNE Jump11                 ; If it is 0 then make FF
+          DEY                        ; Make FF
+          DEC Storage+2              ; Make 256 blocks less one
+          STY Storage+1              ; Make FF new low block value
+Jump11    LDX Storage+2              ; High Block Value
+          BNE Jump15                 ; If it isn't equal to 0 then branch
+          LDY Storage+1
+          JMP Jump19
+
+Jump15    LDA #0C9                   ; Set the adress of the upper part of
+          STA C800Ptr+1              ;  Block in bitmap being created
+          LDA #0FF
+          LDY Storage+1              ; Using the low byte count
+Jump20    DEY
+          STA (C800Ptr),Y            ; Store them
+          BEQ Jump17
+          JMP Jump20
+Jump17    DEY                        ; Fill in first part of block
+          LDA #0C8
+          STA C800Ptr+1
+Jump19
+          LDA #0FF
+          DEY
+          STA (C800Ptr),Y
+          CPY #001                   ; Except the first byte.
+          BEQ Jump18
+          JMP Jump19
+Jump18    RTS
+
+BlkCnt    .BYTE 000
+
+;
+; Catalog - Build a Directory Track
+; Part of formatting support
+;
+Catalog   CLC
+          LDA #006
+          ADC FullPages
+          STA shBlockNumber
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API             ; Write Buffer (BitMap) to block #6
+          JSR ZeroFillC800
+          LDY #02A                   ; Move Block2 information to $C800
+CLoop     LDA Block2,Y
+          STA (C800Ptr),Y
+          DEY
+          BPL CLoop
+          LDA #002                   ; Write block #2 to the disk
+          STA shBlockNumber
+          LDA #kCmd3K_Write
+          JSR CFFA3K_API
+          RTS
+
+;
+; FillC800: clear buffer at $C800
+;
+FFFillC800
+          LDA #0FF
+          PHA
+          JMP FillC800Go
+ZeroFillC800
+          LDA #000
+          PHA
+FillC800Go
+          LDA #0C8
+          STA C800Ptr+1
+          LDA #000
+          STA C800Ptr
+          TAY
+          LDX #001                   ; Loop twice... 512 bytes
+          PLA
+FillLoop
+          STA (C800Ptr),Y
+          INY
+          BNE FillLoop
+          INC C800Ptr+1
+          DEX
+          BPL FillLoop
+
+          LDA #0C8
+          STA C800Ptr+1
+          LDA #000
+          STA C800Ptr
+          RTS
+
+;
+; Formatter Variable Storage Area
+;
+VolBlks  .BYTE 000, 000, 000         ; Number of blocks available
+DirTbl   .BYTE 002, 004, 003         ; Linked list for directory blocks
+         .BYTE 005, 004, 000
+BitTbl   .BYTE 07f ; '01111111'      ; BitMap mask for bad blocks
+         .BYTE 0bf ; '10111111'
+         .BYTE 0df ; '11011111'
+         .BYTE 0ef ; '11101111'
+         .BYTE 0f7 ; '11110111'
+         .BYTE 0fb ; '11111011'
+         .BYTE 0fd ; '11111101'
+         .BYTE 0fe ; '11111110'
+Storage  .BYTE 000, 000, 000         ; General purpose counter/storage byte
+Pointer  .BYTE 000, 000              ; Storage for track count (8 blocks/track)
+Track    .BYTE 000, 000              ; Track number being FORMATted
+Sector   .BYTE 000, 000              ; Current sector number (max=16)
+SlotF    .BYTE 000, 000              ; Slot/Drive of device to FORMAT
+TRKcur   .BYTE 000, 000              ; Current track position
+TRKdes   .BYTE 000, 000              ; Destination track position
+TRKbeg   .BYTE 000                   ; Starting track number
+TRKend   .BYTE 035                   ; Ending track number
+FullPages
+         .BYTE 000                   ; Number of BAM pages to fill
+DevIndex .BYTE 000                   ; Space for index into DEVICES table
+Util     .BYTE 000
+
+
+Block2   .BYTE 000, 000, 003, 000    ; Image of block 2 - for $42 bytes
+VolLen   .BYTE 0F5                   ; $F0 + length of Volume Name
+VOLnam   .ASCII "BLANK          "    ; Volume Name
+Reserved .BYTE 000, 000, 000, 000, 000, 000
+UpLowCase
+         .BYTE 000, 000
+Datime   .BYTE 000, 000, 000, 000
+Version  .BYTE 001
+         .BYTE 000, 0C3, 027, 00D
+         .BYTE 000, 000, 006, 000
+
+         .END
