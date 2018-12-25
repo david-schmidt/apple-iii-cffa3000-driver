@@ -10,13 +10,13 @@
 	<property name="diskImage" value="CFFA3000SystemUtilities.dsk" />
 	<property name="baseImagePath" value="${projdir}/dsk" />
 	<taskdef name="appleCommander" classname="com.webcodepro.applecommander.ui.AntTask" classpath="${acJarPath}/${acJar}"/>
-	<target name="all" description="Bulid everything." depends="clean, assemble, link, builddsk">
+	<target name="all" description="Bulid everything." depends="wipe, assemble, link, builddsk, clean">
 	</target>
-	<target name="clean">
+	<target name="wipe">
 		<!--
 		Clean up everything
 		-->
-		<delete file="${projdir}/out/new.dsk" />
+		<delete dir="${projdir}/out" />
 	</target>
 	<target name="assemble" description="Assemble source.">
 		<!--
@@ -44,7 +44,6 @@
 		<echo message="Copying base image..."/>
 		<copy file="${baseImagePath}/${diskImage}" tofile="${projdir}/out/${diskImage}" />
 		<echo message="Extracting SOS.DRIVER..."/>
-		<appleCommander command="g" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" output="${projdir}/out/SOS.DRIVER#0c0000b4" />
 		<appleCommander command="g" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" output="${projdir}/out/SOS.DRIVER#0c0000" />
 		<exec executable="python">
 			<arg value="${builddir}/lib/A3Driverutil/A3Driverutil.py"/>
@@ -55,6 +54,13 @@
 		<appleCommander command="d" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" failonerror="false"/>
 		<echo message="Updating SOS.DRIVER..."/>
 		<appleCommander command="p" input="${projdir}/out/SOS.DRIVER#0c0000" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" type="$0000" />
+	</target>
+	<target name="clean">
+		<!--
+		Clean up everything
+		-->
+		<delete file="${projdir}/out/SOS.DRIVER#0c0000" />
+		<delete file="${projdir}/out/cffa3000.o" />
 	</target>
 </project>
 
