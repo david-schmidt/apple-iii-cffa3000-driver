@@ -4,44 +4,57 @@
 	<property file="${builddir}/cffa3000a3driver.properties"/>
 	<property file="${builddir}/cffa3000a3driver-default.properties"/>
 	<property name="projdir" value="${basedir}" />
-	<property name="acJar" value="${builddir}/lib/AppleCommander-1.3.5.6-ac.jar" />
-	<target name="all" description="Bulid everything." depends="setup, clean, ftp-get, assemble, builddsk">
-	</target>
-	<target name="setup">
-		<available file="${builddir}/disk1.dsk" property="have-pascal-disks"/>
-		<condition property="need-pascal-disks">
-			<not>
-				<isset property="have-pascal-disks" />
-			</not>
-		</condition>
+	<property name="acJarVersion" value="1.3.5.13-ac" />
+	<property name="acJarPath" value="${builddir}/lib/AppleCommander" />
+	<property name="acJar" value="AppleCommander-${acJarVersion}.jar" />
+	<property name="diskImage" value="CFFA3000SystemUtilities.dsk" />
+	<property name="baseImagePath" value="${projdir}/dsk" />
+	<taskdef name="appleCommander" classname="com.webcodepro.applecommander.ui.AntTask" classpath="${acJarPath}/${acJar}"/>
+	<target name="all" description="Bulid everything." depends="clean, assemble, link, builddsk">
 	</target>
 	<target name="clean">
 		<!--
 		Clean up everything
 		-->
-	</target>
-	<target name="ftp-get" depends="setup" if="need-pascal-disks">
-		<!--
-		Pull down Pascal images
-		-->
-		<get src="http://mirrors.apple2.org.za/ftp.apple.asimov.net/images/programming/pascal/ucsd/UCSD%20Pascal%201.2_1.DSK"
-		dest="build/pDisk1.dsk" 
-		username="anonymous"
-		password="asdf@"/>
-		<get src="http://mirrors.apple2.org.za/ftp.apple.asimov.net/images/programming/pascal/ucsd/UCSD%20Pascal%201.2_2.DSK"
-		dest="build/pDisk2.dsk" 
-		username="anonymous"
-		password="asdf@"/>
+		<delete file="${projdir}/out/new.dsk" />
 	</target>
 	<target name="assemble" description="Assemble source.">
 		<!--
 		Assemble the driver source
 		-->
+		<echo message="Assembling driver..."/>
+		<mkdir dir="${projdir}/out"/>
+		<exec dir="${projdir}/out" executable="${assemblerPath}/ca65" failonerror="true">
+			<arg line=" -l ${projdir}/out/cffa3000.lst ${projdir}/src/cffa3000.s -o ${projdir}/out/cffa3000.o" />
+		</exec>
+	</target>
+	<target name="link" description="Link object code to relocatable version.">
+		<!--
+		Link the driver object code
+		-->
+		<echo message="Linking driver..."/>
+		<exec dir="${projdir}/out" executable="${assemblerPath}/ld65" failonerror="true">
+			<arg line=" ${projdir}/out/cffa3000.o -o cffa3000.o65 -C ${builddir}/Apple3_o65.cfg" />
+		</exec>
 	</target>
 	<target name="builddsk">
 		<!--
-		Start disk image
+		Manipulate disk image
 		-->
+		<echo message="Copying base image..."/>
+		<copy file="${baseImagePath}/${diskImage}" tofile="${projdir}/out/${diskImage}" />
+		<echo message="Extracting SOS.DRIVER..."/>
+		<appleCommander command="g" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" output="${projdir}/out/SOS.DRIVER#0c0000b4" />
+		<appleCommander command="g" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" output="${projdir}/out/SOS.DRIVER#0c0000" />
+		<exec executable="python">
+			<arg value="${builddir}/lib/A3Driverutil/A3Driverutil.py"/>
+			<arg value="update"/>
+			<arg value="${projdir}/out/cffa3000.o65"/>
+			<arg value="${projdir}/out/SOS.DRIVER#0c0000"/>
+		</exec>
+		<appleCommander command="d" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" failonerror="false"/>
+		<echo message="Updating SOS.DRIVER..."/>
+		<appleCommander command="p" input="${projdir}/out/SOS.DRIVER#0c0000" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" type="$0000" />
 	</target>
 </project>
 
