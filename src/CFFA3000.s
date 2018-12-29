@@ -7,16 +7,16 @@
                 .setcpu "6502"
                 .reloc
 
-DriverVersion   = $1000            ; Version number
-DriverMfgr      = $4453            ; Driver Manufacturer - DS
+DriverVersion   = $1000           ; Version number
+DriverMfgr      = $4453           ; Driver Manufacturer - DS
 
 ;
 ; SOS Equates
 ;
-ExtPG     = $1401                  ; Driver extended bank address offset
-AllocSIR  = $1913                  ; Allocate system internal resource
-SELC800   = $1922                  ; Enable Expansion Rom Space
-SysErr    = $1928                  ; Report error to system
+ExtPG     = $1401                 ; Driver extended bank address offset
+AllocSIR  = $1913                 ; Allocate system internal resource
+SELC800   = $1922                 ; Enable Expansion ROM Space
+SysErr    = $1928                 ; Report error to system
 EReg      = $FFDF                 ; Environment register
 ReqCode   = $C0                   ; Request code
 SOS_Unit  = $C1                   ; Unit number
@@ -35,7 +35,7 @@ C800Ptr   = $CF                   ; 2 bytes
 ; Parameter block specific to current SOS request
 ;
 CFFAUnit  = $D1
-Num_Blks  = $D4                   ; 2 bytes lb,hb
+Num_Blks  = $D4                   ; 2 bytes lsb, msb
 DataBuf   = $D6                   ; 2 bytes
 ;
 ; SOS Error Codes
@@ -250,8 +250,8 @@ LastOP     .RES      $08, $FF             ; Last operation for D_REPEAT calls
 SIR_Addr   .WORD     SIR_Tbl
 SIR_Tbl    .RES      $05, $00
 SIR_Len     =      *-SIR_Tbl
-RdBlk_Proc .WORD    $0000
-WrBlk_Proc .WORD    $0000
+RdBlk_Proc .WORD     $0000
+WrBlk_Proc .WORD     $0000
 MaxUnits   .BYTE     $00                  ; The maximum number of units
 DCB_Idx    .BYTE     $00                  ; DCB 0's blocks
            .BYTE     DIB1_Blks-DIB0_Blks  ; DCB 1's blocks
@@ -303,9 +303,9 @@ Dispatch  SWITCH    ReqCode,9,DoTable ; Serve the request
 ; Dispatch errors
 ;
 BadReq    LDA #XREQCODE              ; Bad request code!
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 BadOp     LDA #XBADOP                ; Invalid operation!
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 ;
 ; D_REPEAT - repeat the last D_READ or D_WRITE call
@@ -318,7 +318,7 @@ DRepeat   LDX SOS_Unit
           JMP Dispatch
 
 NoDevice  LDA #XDNFERR               ; Device not found
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 ;
 ; D_INIT call processing - called once each for all volumes.
@@ -426,7 +426,7 @@ DReadGo
           BCS IO_Error               ; An error occurred
 ReadExit  RTS                        ; Exit read routines
 IO_Error  LDA #XIOERROR              ; I/O error
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 ;
 ; D_WRITE call processing
@@ -474,7 +474,7 @@ DStatusGo
 DS1       CMP #$2F                   ; Did we get a fancy new $2f error?
           BNE DS2
           LDA #XDNFERR               ; Then change it to XDNFERR instead.
-DS2       JSR SysErr                 ; Return to SOS with erorr in A
+DS2       JSR SysErr                 ; Return to SOS with error in A
 DS0       CMP #$FE
           BNE DSWhat
 
@@ -487,7 +487,7 @@ DS0       CMP #$FE
           RTS
 
 DSWhat    LDA #XCTLCODE              ; Control/status code no good
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 
 ;
@@ -509,9 +509,9 @@ CReset    JSR UnitInit               ; Reset this unit
           BCS DCNoReset
 DCDone    RTS          
 DCNoReset LDA #XNORESET              ; Things went bad after reset
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 DCWhat    LDA #XCTLCODE              ; Control/status code no good
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 DCFormat
 ;
@@ -544,7 +544,7 @@ DCFormat
           JSR Catalog                ; Write Directory information to the disk
           RTS
 Error     SEC
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 ;------------------------------------
 ;
@@ -583,7 +583,7 @@ Read3k    LDA #kCmd3K_Read
           JSR UnitInit               ; Re-initialize this unit
           JMP Dispatch               ; Go around again!
 @0        LDA LastError
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 @1        LDA #$00
           STA C800Ptr
           LDA #$C8
@@ -661,7 +661,7 @@ Write3k   LDA #$00
           JSR UnitInit               ; Re-initialize this unit
           JMP Dispatch               ; Go around again!
 @0        LDA LastError
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
  
 @1        JSR IncrAdr
           DEC Num_Blks               ; Did we put what was asked for?
@@ -696,7 +696,7 @@ CkCnt     LDA ReqCnt                 ; Look at the lsb of bytes requested
           STA Num_Blks               ; Convert bytes to number of blks to xfer
           BCC CvtBlk                 ; Carry is set from LSR to mark error.
 @1        LDA #XBYTECNT
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 ;
 ; Test for valid block number; abort on error
@@ -707,14 +707,14 @@ CvtBlk    LDX SOS_Unit
           LDA DIB0_Blks+1,Y          ; Blocks on unit msb
           SBC SosBlk+1               ; User requested block number msb
           BVS BlkErr                 ; Not enough blocks on device for request
-          BEQ @1		     ; Equal msb; check lsb.
+          BEQ @1                     ; Equal msb; check lsb.
           RTS                        ; Greater msb; we're ok.
 @1        LDA DIB0_Blks,Y            ; Blocks on unit lsb
           SBC SosBlk                 ; User requested block number lsb
           BVS BlkErr                 ; Not enough blocks on device for request
           RTS                        ; Equal or greater msb; we're ok.
 BlkErr    LDA #XBLKNUM
-          JSR SysErr                 ; Return to SOS with erorr in A
+          JSR SysErr                 ; Return to SOS with error in A
 
 
 IncrAdr   INC C800Ptr+1              ; Increment buffer MSB from CFFA3000
@@ -745,7 +745,7 @@ FixUp     LDA DataBuf+1              ; Look at msb
           STA DataBuf+1              ; Msb of address and
           LDA #$8F
           STA DataBuf+ExtPG          ; Bank number for bank 8F
-          RTS                        ; Eeturn carry set
+          RTS                        ; Return carry set
 @2        AND #$7F                   ; Strip off high bit
           STA DataBuf+1              ; FDxx ->7Dxx
           INC DataBuf+ExtPG          ; Bank N -> bank N+1
@@ -846,7 +846,7 @@ BlkRemainder
           ROR Storage+1
           STA Storage+2
 BitMapCode
-          LDA FullPages              ; Only tick off 7 blks if
+          LDA FullPages              ; Only tick off 7 blocks if
           BNE BitMapNotFirst         ;     this is the only page in the BAM
           LDA #$01                   ; Clear first 7 blocks (i.e. %00000001)
           STA (C800Ptr),Y
@@ -865,7 +865,7 @@ Jump11    LDX Storage+2              ; High Block Value
           LDY Storage+1
           JMP Jump19
 
-Jump15    LDA #$C9                   ; Set the adress of the upper part of
+Jump15    LDA #$C9                   ; Set the address of the upper part of
           STA C800Ptr+1              ;  Block in bitmap being created
           LDA #$FF
           LDY Storage+1              ; Using the low byte count
