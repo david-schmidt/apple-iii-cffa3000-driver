@@ -1,7 +1,6 @@
 ## Introduction
 
 The CFFA3000 is a USB/Compact Flash interface card for the Apple II and Apple /// computers. This project is the driver required for the Apple /// to recognize disk images hosted by the CFFA3000 card.
-Details
 
 ## Driver highlights:
 
