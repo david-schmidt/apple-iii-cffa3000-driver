@@ -45,14 +45,22 @@
 		<copy file="${baseImagePath}/${diskImage}" tofile="${projdir}/out/${diskImage}" />
 		<echo message="Extracting SOS.DRIVER..."/>
 		<appleCommander command="g" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" output="${projdir}/out/SOS.DRIVER#0c0000" />
-		<exec executable="python">
+		<exec executable="${python27Path}python">
 			<arg value="${builddir}/lib/A3Driverutil/A3Driverutil.py"/>
 			<arg value="update"/>
 			<arg value="${projdir}/out/cffa3000.o65"/>
 			<arg value="${projdir}/out/SOS.DRIVER#0c0000"/>
 		</exec>
+		<echo message="Adding built driver to SOS.DRIVER..."/>		
+		<exec executable="${python27Path}python">
+			<arg value="${builddir}/lib/A3Driverutil/A3Driverutil.py"/>
+			<arg value="add"/>
+			<arg value="${projdir}/out/cffa3000.o65"/>
+			<arg value="${projdir}/out/SOS.DRIVER#0c0000"/>
+		</exec>
+		<echo message="Deleting SOS.DRIVER from disk image..."/>
 		<appleCommander command="d" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" failonerror="false"/>
-		<echo message="Updating SOS.DRIVER..."/>
+		<echo message="Putting updated SOS.DRIVER back on disk image..."/>
 		<appleCommander command="p" input="${projdir}/out/SOS.DRIVER#0c0000" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" type="$0000" />
 	</target>
 	<target name="clean">
