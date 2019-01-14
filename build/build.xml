@@ -8,7 +8,7 @@
 	<property name="acJarPath" value="${builddir}/lib/AppleCommander" />
 	<property name="acJar" value="AppleCommander-${acJarVersion}.jar" />
 	<property name="diskImage" value="CFFA3000SystemUtilities.dsk" />
-	<property name="baseImagePath" value="${projdir}/dsk" />
+	<property name="baseImagePath" value="${projdir}/build/dsk" />
 	<taskdef name="appleCommander" classname="com.webcodepro.applecommander.ui.AntTask" classpath="${acJarPath}/${acJar}"/>
 	<target name="all" description="Bulid everything." depends="wipe, assemble, link, builddsk, clean">
 	</target>
@@ -61,7 +61,7 @@
 		<echo message="Deleting SOS.DRIVER from disk image..."/>
 		<appleCommander command="d" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" failonerror="false"/>
 		<echo message="Putting updated SOS.DRIVER back on disk image..."/>
-		<appleCommander command="p" input="${projdir}/out/SOS.DRIVER#0c0000" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" type="$0000" />
+		<appleCommander command="p" input="${projdir}/out/SOS.DRIVER#0c0000" imagename="${projdir}/out/${diskImage}" filename="SOS.DRIVER" type="SOS" />
 	</target>
 	<target name="clean">
 		<!--
